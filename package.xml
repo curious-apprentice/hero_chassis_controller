@@ -1,20 +1,27 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>ros_package_template</name>
+  <name>hero_chassis_controller</name>
   <version>0.1.0</version>
-  <description>A template for ROS packages.</description>
-  <maintainer email="liaoqiayuan@gmail.com">Qiayuan Liao</maintainer>
+  <description>ROS 1 package for a four-wheel mecanum chassis controller.</description>
+
+  <maintainer email="1765604419@qq.com">Jijie Deng</maintainer>
+  <author email="1765604419@qq.com">Jijie Deng</author>
   <license>BSD</license>
-  <author email="liaoqiayuan@gmail.com">Qiayuan Liao</author>
 
-  <!-- buildtool_depend: dependencies of the build process -->
   <buildtool_depend>catkin</buildtool_depend>
-  <!-- build_depend: dependencies only used in source files -->
-  <build_depend>boost</build_depend>
-  <!-- depend: build, export, and execution dependency -->
-  <depend>eigen</depend>
-  <depend>roscpp</depend>
-  <depend>sensor_msgs</depend>
 
-  <build_depend>roslint</build_depend>
+  <depend>control_toolbox</depend>
+  <depend>controller_interface</depend>
+  <depend>dynamic_reconfigure</depend>
+  <depend>geometry_msgs</depend>
+  <depend>hardware_interface</depend>
+  <depend>nav_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>realtime_tools</depend>
+  <depend>roscpp</depend>
+  <depend>tf</depend>
+
+  <export>
+    <!-- Export the controller plugin here when its plugin description is added. -->
+  </export>
 </package>
