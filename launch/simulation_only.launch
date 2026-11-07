@@ -1,0 +1,11 @@
+<launch>
+  <arg name="paused" default="false"/>
+  <arg name="roller_type" default="simple" doc="Use simple or realistic roller collision geometry."/>
+
+  <!-- Run the supplied Hero robot model without loading this package's controller. -->
+  <include file="$(find rm_description_for_task)/launch/hero.launch">
+    <arg name="load_chassis" value="true"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="roller_type" value="$(arg roller_type)"/>
+  </include>
+</launch>

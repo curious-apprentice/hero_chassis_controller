@@ -2,7 +2,7 @@
 
 A ROS 1 catkin package scaffold for a four-wheel mecanum chassis controller for the RoboMaster Hero robot.
 
-The controller implementation has not been added yet. This repository is the starting point for the assignment; the plugin, configuration, launch files, and tests will be added as those features are implemented.
+The controller implementation has not been added yet. The package includes the initial directory structure and launch wiring to the supplied `rm_description_for_task` Hero model. The plugin class, PID configuration, and tests are placeholders for the next implementation steps.
 
 ## Planned features
 
@@ -31,7 +31,13 @@ The assignment requires compilation and debugging through CLion. If using catkin
 
 ## Run
 
-There is no controller or launch file to run yet. Add usage instructions here when the plugin and its launch configuration are implemented.
+The model-only launch can be used before the controller is implemented:
+
+```bash
+roslaunch hero_chassis_controller simulation_only.launch
+```
+
+`run_simulation_and_controller.launch` also starts the controller spawner. It will not load successfully until `HeroChassisController` is implemented and exported by the plugin library.
 
 ## License
 

@@ -1,0 +1,20 @@
+<launch>
+  <arg name="paused" default="false"/>
+  <arg name="roller_type" default="simple" doc="Use simple or realistic roller collision geometry."/>
+
+  <!-- Reuse the supplied Hero model and Gazebo hardware simulation plugin. -->
+  <include file="$(find rm_description_for_task)/launch/hero.launch">
+    <arg name="load_chassis" value="true"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="roller_type" value="$(arg roller_type)"/>
+  </include>
+
+  <rosparam file="$(find hero_chassis_controller)/config/controllers.yaml" command="load"/>
+
+  <node name="controller_spawner"
+        pkg="controller_manager"
+        type="spawner"
+        respawn="false"
+        output="screen"
+        args="controller/hero_chassis_controller controller/joint_state_controller"/>
+</launch>

@@ -1,0 +1,10 @@
+<library path="lib/libhero_chassis_controller">
+  <class name="hero_chassis_controller/HeroChassisController"
+         type="hero_chassis_controller::HeroChassisController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      Mecanum chassis controller for the Hero robot. Implement the controller
+      class before loading this plugin in Gazebo.
+    </description>
+  </class>
+</library>

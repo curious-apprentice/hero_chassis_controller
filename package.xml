@@ -21,7 +21,11 @@
   <depend>roscpp</depend>
   <depend>tf</depend>
 
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_controller</exec_depend>
+  <exec_depend>rm_description_for_task</exec_depend>
+
   <export>
-    <!-- Export the controller plugin here when its plugin description is added. -->
+    <controller_interface plugin="${prefix}/hero_chassis_controller_plugins.xml"/>
   </export>
 </package>
