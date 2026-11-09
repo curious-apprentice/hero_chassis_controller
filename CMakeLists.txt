@@ -12,9 +12,11 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   geometry_msgs
   hardware_interface
+  nav_msgs
   pluginlib
   realtime_tools
   roscpp
+  tf
 )
 
 generate_dynamic_reconfigure_options(cfg/HeroChassisController.cfg)
@@ -28,9 +30,11 @@ catkin_package(
     dynamic_reconfigure
     geometry_msgs
     hardware_interface
+    nav_msgs
     pluginlib
     realtime_tools
     roscpp
+    tf
 )
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${CATKIN_DEVEL_PREFIX}/${CATKIN_GLOBAL_INCLUDE_DESTINATION})

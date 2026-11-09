@@ -5,9 +5,11 @@
 
 #include <boost/bind/bind.hpp>
 #include <pluginlib/class_list_macros.hpp>
+#include <tf/transform_datatypes.h>
 
 namespace hero_chassis_controller {
 namespace {
+constexpr double kTwoPi = 6.28318530717958647692;
 const std::array<const char*, 4> kDefaultJointNames{{
     "left_front_wheel_joint", "right_front_wheel_joint",
     "left_back_wheel_joint", "right_back_wheel_joint"}};
@@ -47,12 +49,14 @@ bool HeroChassisController::init(hardware_interface::EffortJointInterface* hardw
   controller_nh.param("max_wheel_speed", max_wheel_speed_, max_wheel_speed_);
   controller_nh.param("max_effort", max_effort_, max_effort_);
   controller_nh.param("command_timeout", command_timeout_, command_timeout_);
+  controller_nh.param("base_frame_id", base_frame_id_, base_frame_id_);
+  controller_nh.param("odom_frame_id", odom_frame_id_, odom_frame_id_);
   if (!isFinite(wheel_radius_) || !isFinite(wheel_track_) || !isFinite(wheel_base_) ||
       !isFinite(max_wheel_speed_) || !isFinite(max_effort_) ||
       !isFinite(command_timeout_) || wheel_radius_ <= 0.0 || wheel_track_ <= 0.0 ||
       wheel_base_ <= 0.0 || max_wheel_speed_ <= 0.0 || max_effort_ <= 0.0 ||
-      command_timeout_ <= 0.0) {
-    ROS_ERROR("Wheel geometry, limits, and command timeout must be finite and positive.");
+      command_timeout_ <= 0.0 || base_frame_id_.empty() || odom_frame_id_.empty()) {
+    ROS_ERROR("Wheel geometry, limits, timeout, and frame IDs must be valid.");
     return false;
   }
 
@@ -98,17 +102,28 @@ bool HeroChassisController::init(hardware_interface::EffortJointInterface* hardw
   command_subscriber_ = root_nh.subscribe(
       "/cmd_vel", 1, &HeroChassisController::commandCallback, this);
 
+  odometry_publisher_.reset(
+      new realtime_tools::RealtimePublisher<nav_msgs::Odometry>(root_nh, "odom", 10));
+  transform_publisher_.reset(
+      new realtime_tools::RealtimePublisher<tf::tfMessage>(root_nh, "/tf", 10));
+  odometry_publisher_->msg_.header.frame_id = odom_frame_id_;
+  odometry_publisher_->msg_.child_frame_id = base_frame_id_;
+  transform_publisher_->msg_.transforms.resize(1);
+  transform_publisher_->msg_.transforms[0].header.frame_id = odom_frame_id_;
+  transform_publisher_->msg_.transforms[0].child_frame_id = base_frame_id_;
+
   dynamic_reconfigure::Server<HeroChassisControllerConfig>::CallbackType callback =
       boost::bind(&HeroChassisController::reconfigureCallback, this,
                   boost::placeholders::_1, boost::placeholders::_2);
   reconfigure_server_->setCallback(callback);
 
-  ROS_INFO("HeroChassisController initialized with four wheel PID loops and /cmd_vel inverse kinematics.");
+  ROS_INFO("HeroChassisController initialized with wheel PID, inverse kinematics, and odometry.");
   return true;
 }
 
 void HeroChassisController::starting(const ros::Time& /*time*/) {
   command_buffer_.writeFromNonRT(CommandData{});
+  odometry_pose_ = ChassisVelocity{};
   for (auto& pid : wheel_pids_) {
     pid.reset();
   }
@@ -123,27 +138,45 @@ void HeroChassisController::update(const ros::Time& time, const ros::Duration& p
     return;
   }
 
-  ChassisVelocity velocity;
+  ChassisVelocity command_velocity;
   const CommandData* command = command_buffer_.readFromRT();
   if (command != nullptr && command->valid) {
     const double age = (time - command->received).toSec();
     if (isFinite(age) && age >= 0.0 && age <= command_timeout_) {
-      velocity.x = command->twist.linear.x;
-      velocity.y = command->twist.linear.y;
-      velocity.yaw = command->twist.angular.z;
+      command_velocity.x = command->twist.linear.x;
+      command_velocity.y = command->twist.linear.y;
+      command_velocity.yaw = command->twist.angular.z;
+    }
+  }
+
+  std::array<double, 4> measured_wheel_speeds{};
+  for (std::size_t index = 0; index < wheel_joints_.size(); ++index) {
+    measured_wheel_speeds[index] = wheel_joints_[index].getVelocity();
+    if (!isFinite(measured_wheel_speeds[index])) {
+      measured_wheel_speeds[index] = 0.0;
     }
   }
 
   const std::array<double, 4> desired_wheel_speeds =
-      inverseKinematics(velocity, wheel_radius_, wheel_track_, wheel_base_);
+      inverseKinematics(command_velocity, wheel_radius_, wheel_track_, wheel_base_);
   for (std::size_t index = 0; index < wheel_joints_.size(); ++index) {
     const double desired = std::max(-max_wheel_speed_,
                                     std::min(max_wheel_speed_, desired_wheel_speeds[index]));
-    const double error = desired - wheel_joints_[index].getVelocity();
+    const double error = desired - measured_wheel_speeds[index];
     const double effort = wheel_pids_[index].computeCommand(error, period);
     wheel_joints_[index].setCommand(
-        std::max(-max_effort_, std::min(max_effort_, effort)));
+        isFinite(effort) ? std::max(-max_effort_, std::min(max_effort_, effort)) : 0.0);
   }
+
+  const ChassisVelocity body_velocity =
+      forwardKinematics(measured_wheel_speeds, wheel_radius_, wheel_track_, wheel_base_);
+  const double midpoint_yaw = odometry_pose_.yaw + 0.5 * body_velocity.yaw * dt;
+  odometry_pose_.x += (body_velocity.x * std::cos(midpoint_yaw) -
+                       body_velocity.y * std::sin(midpoint_yaw)) * dt;
+  odometry_pose_.y += (body_velocity.x * std::sin(midpoint_yaw) +
+                       body_velocity.y * std::cos(midpoint_yaw)) * dt;
+  odometry_pose_.yaw = std::remainder(odometry_pose_.yaw + body_velocity.yaw * dt, kTwoPi);
+  publishOdometry(time, body_velocity);
 }
 
 void HeroChassisController::stopping(const ros::Time& /*time*/) {
@@ -184,6 +217,33 @@ void HeroChassisController::reconfigureCallback(HeroChassisControllerConfig& con
     const double integral_limit = std::abs(i_clamp[index]);
     wheel_pids_[index].setGains(kp[index], ki[index], kd[index],
                                 integral_limit, -integral_limit, true);
+  }
+}
+
+void HeroChassisController::publishOdometry(const ros::Time& time,
+                                             const ChassisVelocity& velocity) {
+  if (odometry_publisher_ && odometry_publisher_->trylock()) {
+    nav_msgs::Odometry& odometry = odometry_publisher_->msg_;
+    odometry.header.stamp = time;
+    odometry.pose.pose.position.x = odometry_pose_.x;
+    odometry.pose.pose.position.y = odometry_pose_.y;
+    odometry.pose.pose.position.z = 0.0;
+    odometry.pose.pose.orientation = tf::createQuaternionMsgFromYaw(odometry_pose_.yaw);
+    odometry.twist.twist.linear.x = velocity.x;
+    odometry.twist.twist.linear.y = velocity.y;
+    odometry.twist.twist.angular.z = velocity.yaw;
+    odometry_publisher_->unlockAndPublish();
+  }
+
+  if (transform_publisher_ && transform_publisher_->trylock()) {
+    geometry_msgs::TransformStamped& transform =
+        transform_publisher_->msg_.transforms.front();
+    transform.header.stamp = time;
+    transform.transform.translation.x = odometry_pose_.x;
+    transform.transform.translation.y = odometry_pose_.y;
+    transform.transform.translation.z = 0.0;
+    transform.transform.rotation = tf::createQuaternionMsgFromYaw(odometry_pose_.yaw);
+    transform_publisher_->unlockAndPublish();
   }
 }
 
