@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -11,6 +12,7 @@
 #include <dynamic_reconfigure/server.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Vector3Stamped.h>
 #include <hardware_interface/joint_command_interface.h>
 #include <hero_chassis_controller/HeroChassisControllerConfig.h>
 #include <hero_chassis_controller/mecanum_kinematics.h>
@@ -19,6 +21,7 @@
 #include <realtime_tools/realtime_publisher.h>
 #include <ros/subscriber.h>
 #include <tf/tfMessage.h>
+#include <tf/transform_listener.h>
 
 namespace hero_chassis_controller {
 
@@ -53,11 +56,14 @@ class HeroChassisController
   realtime_tools::RealtimeBuffer<CommandData> command_buffer_;
   std::unique_ptr<dynamic_reconfigure::Server<HeroChassisControllerConfig>> reconfigure_server_;
   ros::Subscriber command_subscriber_;
+  tf::TransformListener transform_listener_;
   std::unique_ptr<realtime_tools::RealtimePublisher<nav_msgs::Odometry>> odometry_publisher_;
   std::unique_ptr<realtime_tools::RealtimePublisher<tf::tfMessage>> transform_publisher_;
 
   std::string base_frame_id_{"base_link"};
   std::string odom_frame_id_{"odom"};
+  std::string global_frame_id_{"odom"};
+  std::atomic<bool> global_frame_mode_{false};
   double wheel_radius_{0.07625};
   double wheel_track_{0.4};
   double wheel_base_{0.4};

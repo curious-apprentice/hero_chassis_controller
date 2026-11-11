@@ -55,13 +55,15 @@ bool HeroChassisController::init(hardware_interface::EffortJointInterface* hardw
                       max_angular_acceleration_);
   controller_nh.param("base_frame_id", base_frame_id_, base_frame_id_);
   controller_nh.param("odom_frame_id", odom_frame_id_, odom_frame_id_);
+  controller_nh.param("global_frame_id", global_frame_id_, global_frame_id_);
   if (!isFinite(wheel_radius_) || !isFinite(wheel_track_) || !isFinite(wheel_base_) ||
       !isFinite(max_wheel_speed_) || !isFinite(max_effort_) ||
       !isFinite(command_timeout_) || !isFinite(max_linear_acceleration_) ||
       !isFinite(max_angular_acceleration_) || wheel_radius_ <= 0.0 || wheel_track_ <= 0.0 ||
       wheel_base_ <= 0.0 || max_wheel_speed_ <= 0.0 || max_effort_ <= 0.0 ||
       command_timeout_ <= 0.0 || max_linear_acceleration_ <= 0.0 ||
-      max_angular_acceleration_ <= 0.0 || base_frame_id_.empty() || odom_frame_id_.empty()) {
+      max_angular_acceleration_ <= 0.0 || base_frame_id_.empty() || odom_frame_id_.empty() ||
+      global_frame_id_.empty()) {
     ROS_ERROR("Wheel geometry, limits, acceleration, timeout, and frame IDs must be valid.");
     return false;
   }
@@ -86,6 +88,8 @@ bool HeroChassisController::init(hardware_interface::EffortJointInterface* hardw
   controller_nh.param("right_front_i_clamp", initial_config.right_front_i_clamp, initial_config.right_front_i_clamp);
   controller_nh.param("left_back_i_clamp", initial_config.left_back_i_clamp, initial_config.left_back_i_clamp);
   controller_nh.param("right_back_i_clamp", initial_config.right_back_i_clamp, initial_config.right_back_i_clamp);
+  controller_nh.param("global_frame_mode", initial_config.global_frame_mode,
+                      initial_config.global_frame_mode);
 
   const std::array<double, 4> kp{{initial_config.left_front_kp, initial_config.right_front_kp,
                                   initial_config.left_back_kp, initial_config.right_back_kp}};
@@ -225,6 +229,31 @@ void HeroChassisController::commandCallback(const geometry_msgs::TwistConstPtr& 
 
   CommandData command;
   command.twist = *message;
+  if (global_frame_mode_.load(std::memory_order_relaxed)) {
+    // Twist has no header, so global_frame_id_ supplies its source frame.
+    geometry_msgs::Vector3Stamped global_velocity;
+    global_velocity.header.frame_id = global_frame_id_;
+    global_velocity.header.stamp = ros::Time(0);  // Use the latest available transform.
+    global_velocity.vector.x = message->linear.x;
+    global_velocity.vector.y = message->linear.y;
+    global_velocity.vector.z = 0.0;
+
+    geometry_msgs::Vector3Stamped chassis_velocity;
+    try {
+      transform_listener_.transformVector(base_frame_id_, global_velocity, chassis_velocity);
+      command.twist.linear.x = chassis_velocity.vector.x;
+      command.twist.linear.y = chassis_velocity.vector.y;
+      // For planar yaw rotation, angular velocity about z is unchanged.
+    } catch (const tf::TransformException& exception) {
+      ROS_WARN_THROTTLE(2.0, "Cannot transform cmd_vel from %s to %s: %s",
+                        global_frame_id_.c_str(), base_frame_id_.c_str(), exception.what());
+      CommandData stop_command;
+      stop_command.received = ros::Time::now();
+      stop_command.valid = true;
+      command_buffer_.writeFromNonRT(stop_command);
+      return;
+    }
+  }
   command.received = ros::Time::now();
   command.valid = true;
   command_buffer_.writeFromNonRT(command);
@@ -232,6 +261,14 @@ void HeroChassisController::commandCallback(const geometry_msgs::TwistConstPtr& 
 
 void HeroChassisController::reconfigureCallback(HeroChassisControllerConfig& config,
                                                 std::uint32_t /*level*/) {
+  const bool previous_mode = global_frame_mode_.exchange(
+      config.global_frame_mode, std::memory_order_relaxed);
+  if (previous_mode != config.global_frame_mode) {
+    CommandData stop_command;
+    stop_command.received = ros::Time::now();
+    stop_command.valid = true;
+    command_buffer_.writeFromNonRT(stop_command);
+  }
   const std::array<double, 4> kp{{config.left_front_kp, config.right_front_kp,
                                   config.left_back_kp, config.right_back_kp}};
   const std::array<double, 4> ki{{config.left_front_ki, config.right_front_ki,

@@ -4,7 +4,7 @@ ROS Noetic `ros_control` 插件，用于完成任务中的轮速 PID 控制与�
 
 ## 已实现范围
 
-- 订阅 `geometry_msgs/Twist` 话题 `/cmd_vel`，将 `linear.x`、`linear.y`、`angular.z` 视为 `base_link` 坐标系下的底盘速度。
+- 订阅 `geometry_msgs/Twist` 话题 `/cmd_vel`；默认将 `linear.x`、`linear.y`、`angular.z` 视为 `base_link` 坐标系下的底盘速度，也支持配置为全局坐标系速度并通过 TF 转到 `base_link`。
 - 根据麦克纳姆轮逆运动学计算左前、右前、左后、右后四个轮子的目标角速度。
 - 每个轮子独立使用一个 `control_toolbox::Pid`，以目标角速度和测量角速度之差计算 EffortJointInterface 力矩命令。
 - 从 YAML 读取轮子几何、速度/力矩限幅、命令超时和各轮 PID 参数；可通过 `rqt_reconfigure` 在线调整 PID。
@@ -13,7 +13,20 @@ ROS Noetic `ros_control` 插件，用于完成任务中的轮速 PID 控制与�
 - 通过四轮实际角速度做正运动学，积分估计平面位姿，并发布 `nav_msgs/Odometry` 到 `/odom`，同时发布 `odom → base_link` TF。
 - 命令超时、无效数值或非正控制周期时停止输出非零轮速/力矩命令。
 
-本包尚未实现全局坐标速度模式。轮式里程计是基于轮速的估计，仿真打滑、轮径误差或几何参数偏差都会影响精度。PID 初始增益是仿真起点，需按实际响应调整，不代表已经完成动态整定。
+轮式里程计是基于轮速的估计，仿真打滑、轮径误差或几何参数偏差都会影响精度。PID 初始增益是仿真起点，需按实际响应调整，不代表已经完成动态整定。
+
+### 速度指令坐标系模式
+
+`geometry_msgs/Twist` 本身不带坐标系字段，因此控制器通过参数明确约定 `/cmd_vel` 的含义：
+
+```yaml
+global_frame_mode: false  # false: base_link 车体坐标系；true: global_frame_id 指定的全局坐标系
+global_frame_id: odom     # 可设为 odom 或 map，且必须存在到 base_link 的 TF
+```
+
+全局模式下，控制器在 ROS 指令回调中调用 `tf::TransformListener::transformVector`，将平面线速度向量旋转到 `base_link`，再送入逆运动学。平面运动时 `angular.z` 保持不变。若 TF 不可用，本条指令不会被误当成车体坐标系指令，控制器会将目标速度清零并按加速度限制平滑停车。切换模式时也会先清除旧坐标系的指令。
+
+`global_frame_mode` 也可通过 `rqt_reconfigure` 在线切换。启用全局模式前，确认 `global_frame_id` 到 `base_frame_id` 的 TF 持续可用。
 
 ## 依赖和构建
 

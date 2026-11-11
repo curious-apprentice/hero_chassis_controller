@@ -16,6 +16,8 @@ controller:
     max_angular_acceleration: 2.0
     base_frame_id: base_link
     odom_frame_id: odom
+    global_frame_id: odom
+    global_frame_mode: false
     left_front_kp: 2.0
     left_front_ki: 0.1
     left_front_kd: 0.0
