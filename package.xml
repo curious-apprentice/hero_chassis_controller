@@ -24,6 +24,7 @@
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>joint_state_controller</exec_depend>
   <exec_depend>rm_description_for_task</exec_depend>
+  <exec_depend>teleop_twist_keyboard</exec_depend>
 
   <export>
     <controller_interface plugin="${prefix}/hero_chassis_controller_plugins.xml"/>

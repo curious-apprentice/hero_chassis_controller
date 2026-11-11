@@ -49,14 +49,20 @@ bool HeroChassisController::init(hardware_interface::EffortJointInterface* hardw
   controller_nh.param("max_wheel_speed", max_wheel_speed_, max_wheel_speed_);
   controller_nh.param("max_effort", max_effort_, max_effort_);
   controller_nh.param("command_timeout", command_timeout_, command_timeout_);
+  controller_nh.param("max_linear_acceleration", max_linear_acceleration_,
+                      max_linear_acceleration_);
+  controller_nh.param("max_angular_acceleration", max_angular_acceleration_,
+                      max_angular_acceleration_);
   controller_nh.param("base_frame_id", base_frame_id_, base_frame_id_);
   controller_nh.param("odom_frame_id", odom_frame_id_, odom_frame_id_);
   if (!isFinite(wheel_radius_) || !isFinite(wheel_track_) || !isFinite(wheel_base_) ||
       !isFinite(max_wheel_speed_) || !isFinite(max_effort_) ||
-      !isFinite(command_timeout_) || wheel_radius_ <= 0.0 || wheel_track_ <= 0.0 ||
+      !isFinite(command_timeout_) || !isFinite(max_linear_acceleration_) ||
+      !isFinite(max_angular_acceleration_) || wheel_radius_ <= 0.0 || wheel_track_ <= 0.0 ||
       wheel_base_ <= 0.0 || max_wheel_speed_ <= 0.0 || max_effort_ <= 0.0 ||
-      command_timeout_ <= 0.0 || base_frame_id_.empty() || odom_frame_id_.empty()) {
-    ROS_ERROR("Wheel geometry, limits, timeout, and frame IDs must be valid.");
+      command_timeout_ <= 0.0 || max_linear_acceleration_ <= 0.0 ||
+      max_angular_acceleration_ <= 0.0 || base_frame_id_.empty() || odom_frame_id_.empty()) {
+    ROS_ERROR("Wheel geometry, limits, acceleration, timeout, and frame IDs must be valid.");
     return false;
   }
 
@@ -124,6 +130,7 @@ bool HeroChassisController::init(hardware_interface::EffortJointInterface* hardw
 void HeroChassisController::starting(const ros::Time& /*time*/) {
   command_buffer_.writeFromNonRT(CommandData{});
   odometry_pose_ = ChassisVelocity{};
+  limited_command_velocity_ = ChassisVelocity{};
   for (auto& pid : wheel_pids_) {
     pid.reset();
   }
@@ -148,6 +155,26 @@ void HeroChassisController::update(const ros::Time& time, const ros::Duration& p
       command_velocity.yaw = command->twist.angular.z;
     }
   }
+
+  // Limit planar and angular velocity changes independently in the controller loop.
+  const double delta_x = command_velocity.x - limited_command_velocity_.x;
+  const double delta_y = command_velocity.y - limited_command_velocity_.y;
+  const double linear_delta = std::hypot(delta_x, delta_y);
+  const double max_linear_delta = max_linear_acceleration_ * dt;
+  if (linear_delta > max_linear_delta && linear_delta > 0.0) {
+    const double scale = max_linear_delta / linear_delta;
+    limited_command_velocity_.x += delta_x * scale;
+    limited_command_velocity_.y += delta_y * scale;
+  } else {
+    limited_command_velocity_.x = command_velocity.x;
+    limited_command_velocity_.y = command_velocity.y;
+  }
+
+  const double max_angular_delta = max_angular_acceleration_ * dt;
+  const double angular_delta = command_velocity.yaw - limited_command_velocity_.yaw;
+  limited_command_velocity_.yaw +=
+      std::max(-max_angular_delta, std::min(max_angular_delta, angular_delta));
+  command_velocity = limited_command_velocity_;
 
   std::array<double, 4> measured_wheel_speeds{};
   for (std::size_t index = 0; index < wheel_joints_.size(); ++index) {

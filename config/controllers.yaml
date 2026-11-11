@@ -12,6 +12,8 @@ controller:
     max_wheel_speed: 50.0
     max_effort: 5.0
     command_timeout: 0.5
+    max_linear_acceleration: 1.0
+    max_angular_acceleration: 2.0
     base_frame_id: base_link
     odom_frame_id: odom
     left_front_kp: 2.0

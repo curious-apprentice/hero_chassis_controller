@@ -64,8 +64,11 @@ class HeroChassisController
   double max_wheel_speed_{50.0};
   double max_effort_{5.0};
   double command_timeout_{0.5};
+  double max_linear_acceleration_{1.0};
+  double max_angular_acceleration_{2.0};
 
   ChassisVelocity odometry_pose_;
+  ChassisVelocity limited_command_velocity_;
 };
 
 }  // namespace hero_chassis_controller
