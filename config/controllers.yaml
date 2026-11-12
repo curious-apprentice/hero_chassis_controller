@@ -1,0 +1,40 @@
+controller:
+  hero_chassis_controller:
+    type: hero_chassis_controller/HeroChassisController
+    joints:
+      - left_front_wheel_joint
+      - right_front_wheel_joint
+      - left_back_wheel_joint
+      - right_back_wheel_joint
+    wheel_radius: 0.07625
+    wheel_track: 0.4
+    wheel_base: 0.4
+    max_wheel_speed: 50.0
+    max_effort: 5.0
+    command_timeout: 0.5
+    max_linear_acceleration: 1.0
+    max_angular_acceleration: 2.0
+    base_frame_id: base_link
+    odom_frame_id: odom
+    global_frame_id: odom
+    global_frame_mode: false
+    left_front_kp: 2.0
+    left_front_ki: 0.1
+    left_front_kd: 0.0
+    left_front_i_clamp: 2.0
+    right_front_kp: 2.0
+    right_front_ki: 0.1
+    right_front_kd: 0.0
+    right_front_i_clamp: 2.0
+    left_back_kp: 2.0
+    left_back_ki: 0.1
+    left_back_kd: 0.0
+    left_back_i_clamp: 2.0
+    right_back_kp: 2.0
+    right_back_ki: 0.1
+    right_back_kd: 0.0
+    right_back_i_clamp: 2.0
+
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50

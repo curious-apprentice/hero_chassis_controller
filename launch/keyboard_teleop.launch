@@ -1,0 +1,12 @@
+<launch>
+  <!-- Opens an interactive terminal for keyboard input and publishes to the controller. -->
+  <node pkg="teleop_twist_keyboard"
+        type="teleop_twist_keyboard.py"
+        name="hero_keyboard_teleop"
+        output="screen"
+        launch-prefix="x-terminal-emulator -e">
+    <param name="speed" value="0.2"/>
+    <param name="turn" value="0.5"/>
+    <remap from="cmd_vel" to="/cmd_vel"/>
+  </node>
+</launch>
